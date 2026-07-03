@@ -26,7 +26,8 @@ position where its reference sticker belongs, emitting Speffz letters; new
 cycles break in at the alphabetically first unsolved letter and close on their
 starting piece, so flips/twists in place appear as 2-target break-ins.
 
-Sanity checks used during development: every move permutation has order 4,
+Sanity checks used during development: 
+every move permutation has order 4,
 scramble `R` with Old Pochmann buffers reproduces the textbook memo
 (edges `JVT`, corners `BJVTB`), and edge/corner target-count parity agrees
 across random scrambles for all buffer combinations.
