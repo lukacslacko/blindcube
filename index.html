@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind memo — 3×3 BLD letter sequences</title>
+<meta name="description" content="Paste a 3x3 scramble and get the Speffz letter sequences to memorize for a blindfolded Rubik's cube solve.">
+<style>
+  :root{
+    --bg:#16181d; --panel:#1e2128; --line:#2b2f38; --line2:#3a3f4a;
+    --text:#e9ebee; --muted:#8d93a0; --faint:#5a6170; --warn:#f0b429; --err:#ff7a70;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono','Roboto Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:'Avenir Next','Segoe UI',system-ui,sans-serif;padding:28px 16px 64px}
+  .wrap{max-width:980px;margin:0 auto}
+  h1{font-size:30px;font-weight:800;letter-spacing:-0.01em;margin:0}
+  .sub{color:var(--muted);font-size:14px;margin:2px 0 22px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+  .label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  textarea{width:100%;resize:vertical;background:var(--bg);color:var(--text);border:1px solid var(--line);
+    border-radius:9px;padding:10px 12px;font-size:16px;font-family:var(--mono);outline:none}
+  textarea:focus{border-color:var(--line2)}
+  button{background:var(--line);color:var(--text);border:1px solid var(--line2);border-radius:9px;
+    padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  button.ghost{background:transparent}
+  button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center}
+  .spacer{flex:1}
+  .seg{display:inline-flex;background:var(--bg);border-radius:9px;border:1px solid var(--line);overflow:hidden}
+  .seg button{border:none;border-radius:0;background:transparent;color:var(--muted);padding:7px 12px}
+  .seg button.on{background:var(--line2);color:#fff}
+  .seg button span{opacity:.55;font-size:11px}
+  .cols{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+  .col-main{flex:1 1 420px;min-width:320px}
+  .memo-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .memo-head b{font-size:17px}
+  .memo-head small{font-size:12px;color:var(--muted)}
+  .pairs{display:flex;flex-wrap:wrap;gap:14px;row-gap:12px}
+  .pair{display:flex;gap:4px}
+  .tile{width:40px;height:40px;border-radius:7px;border:1px solid rgba(0,0,0,.35);
+    box-shadow:inset 0 -2px 0 rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-weight:800;font-size:21px}
+  .tile.ghost{background:transparent;border:1px dashed #4a505c;box-shadow:none;color:var(--muted)}
+  .cyc{margin-top:12px;font-size:13px;color:#aab0bc;font-family:var(--mono)}
+  .cyc .sep{color:var(--faint)}
+  .cyc .brk{border-bottom:1px dotted var(--faint)}
+  .note{margin-top:10px;font-size:13px;color:var(--warn)}
+  .parity{border-color:var(--warn);color:var(--warn);font-weight:700;font-size:14px}
+  .err{margin-top:10px;color:var(--err);font-size:14px}
+  .hint{margin-top:10px;color:var(--muted);font-size:14px}
+  #net{position:relative;background:var(--bg);border-radius:12px;border:1px solid var(--line)}
+  .stk{position:absolute;border-radius:5px;border:1px solid rgba(0,0,0,.4);display:flex;align-items:center;
+    justify-content:center;color:rgba(20,22,26,.72);font-size:12px;font-weight:700;font-family:var(--mono)}
+  .stk.buf{border:2px solid #fff;box-shadow:0 0 0 2px var(--bg),0 0 10px rgba(255,255,255,.35)}
+  .netnote{color:var(--faint);font-size:12px;margin-top:8px;max-width:400px}
+  .scroll{overflow-x:auto}
+  footer{color:var(--faint);font-size:12px;margin-top:28px}
+  footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Blind memo</h1>
+  <div class="sub">Paste a 3×3 scramble, get the Speffz letter sequences to memorize for a blindfolded solve.</div>
+
+  <div class="panel">
+    <div class="label" style="margin-bottom:8px">Scramble</div>
+    <textarea id="scramble" rows="2" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="rand">Random scramble</button>
+      <button id="clear" class="ghost">Clear</button>
+      <div class="spacer"></div>
+      <span class="label">Edge buffer</span><span class="seg" id="ebuf"></span>
+      <span class="label">Corner buffer</span><span class="seg" id="cbuf"></span>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <div class="cols" id="results" hidden>
+    <div class="col-main">
+      <div class="panel parity" id="parity" hidden>
+        PARITY — odd number of targets. Solve edges &amp; corners as memoed, then apply your parity fix.
+      </div>
+      <div class="panel" id="edges"></div>
+      <div class="panel" id="corners"></div>
+    </div>
+    <div>
+      <div class="label" style="margin-bottom:8px">Scrambled state · letters mark positions (Speffz)</div>
+      <div class="scroll"><div id="net"></div></div>
+      <div class="netnote">
+        White-ringed stickers are your buffers. Trace: the sticker sitting in the buffer tells you the first
+        letter to shoot to; letters are chunked in pairs for imaging. Break-in cycles start at the alphabetically
+        first unsolved letter and close on their starting piece.
+      </div>
+    </div>
+  </div>
+
+  <footer>Speffz lettering · Old Pochmann / M2 / 3-style buffers · <a href="https://github.com/lukacslacko/blindrubik">source</a></footer>
+</div>
+
+<script>
+"use strict";
+/* ============ cube core (moves generated from 3D sticker geometry) ============ */
+const FACE_DEFS = {
+  U:{n:[0,1,0],  right:[1,0,0],  down:[0,0,1],  off:0,  color:"#f2f3f0", dark:true},
+  L:{n:[-1,0,0], right:[0,0,1],  down:[0,-1,0], off:4,  color:"#ff9a1f", dark:true},
+  F:{n:[0,0,1],  right:[1,0,0],  down:[0,-1,0], off:8,  color:"#1fb95c", dark:false},
+  R:{n:[1,0,0],  right:[0,0,-1], down:[0,-1,0], off:12, color:"#e2382f", dark:false},
+  B:{n:[0,0,-1], right:[-1,0,0], down:[0,-1,0], off:16, color:"#2f6de0", dark:false},
+  D:{n:[0,-1,0], right:[1,0,0],  down:[0,0,-1], off:20, color:"#ffd42a", dark:true},
+};
+const FACE_ORDER = ["U","L","F","R","B","D"];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+/* rotate v by -90° (clockwise seen from +axis) about unit axis a */
+const rotCW=(a,v)=>{const d=dot(a,v),c=cross(a,v);return [a[0]*d-c[0],a[1]*d-c[1],a[2]*d-c[2]];};
+
+const facelets=[]; const byKey=new Map();
+const fkey=(p,n)=>p.join(",")+"|"+n.join(",");
+for(const f of FACE_ORDER){
+  const d=FACE_DEFS[f];
+  for(let r=0;r<3;r++)for(let c=0;c<3;c++){
+    const pos=[0,1,2].map(i=>3*d.n[i]+2*(c-1)*d.right[i]+2*(r-1)*d.down[i]);
+    byKey.set(fkey(pos,d.n),facelets.length);
+    facelets.push({face:f,r,c,pos,n:d.n});
+  }
+}
+const MOVE_PERM={};
+for(const f of FACE_ORDER){
+  const a=FACE_DEFS[f].n;
+  const perm=facelets.map((_,i)=>i);
+  facelets.forEach((fl,i)=>{
+    if(dot(fl.pos,a)>=2) perm[i]=byKey.get(fkey(rotCW(a,fl.pos),rotCW(a,fl.n)));
+  });
+  MOVE_PERM[f]=perm;
+}
+
+/* Speffz lettering: separate A–X alphabets for corners and edges */
+const CORNER_POS={"0,0":0,"0,2":1,"2,2":2,"2,0":3};
+const EDGE_POS={"0,1":0,"1,2":1,"2,1":2,"1,0":3};
+const letterInfo=Array(54).fill(null);
+const cornerL2F={}, edgeL2F={};
+facelets.forEach((fl,i)=>{
+  const k=fl.r+","+fl.c, off=FACE_DEFS[fl.face].off;
+  if(k in CORNER_POS){const L=String.fromCharCode(65+off+CORNER_POS[k]);letterInfo[i]={type:"corner",letter:L};cornerL2F[L]=i;}
+  else if(k in EDGE_POS){const L=String.fromCharCode(65+off+EDGE_POS[k]);letterInfo[i]={type:"edge",letter:L};edgeL2F[L]=i;}
+});
+const faceOfLetter=L=>FACE_ORDER[Math.floor((L.charCodeAt(0)-65)/4)];
+
+/* pieces grouped by cubelet */
+function buildPieces(nStickers){
+  const map=new Map();
+  facelets.forEach((fl,i)=>{
+    const sig=fl.pos.map(Math.sign);
+    if(sig.filter(x=>x!==0).length!==nStickers)return;
+    const k=sig.join(",");
+    if(!map.has(k))map.set(k,{key:k,facelets:[]});
+    map.get(k).facelets.push(i);
+  });
+  return [...map.values()];
+}
+const corners=buildPieces(3), edges=buildPieces(2);
+const pieceOf={corner:Array(54).fill(null),edge:Array(54).fill(null)};
+corners.forEach(p=>p.facelets.forEach(f=>pieceOf.corner[f]=p));
+edges.forEach(p=>p.facelets.forEach(f=>pieceOf.edge[f]=p));
+const solvedKeyOf=p=>p.facelets.map(f=>facelets[f].face).slice().sort().join("");
+const solvedByKey={corner:new Map(),edge:new Map()};
+corners.forEach(p=>solvedByKey.corner.set(solvedKeyOf(p),p));
+edges.forEach(p=>solvedByKey.edge.set(solvedKeyOf(p),p));
+const NAME_ORDER=["U","D","F","B","R","L"];
+const pieceName=p=>p.facelets.map(f=>facelets[f].face)
+  .sort((a,b)=>NAME_ORDER.indexOf(a)-NAME_ORDER.indexOf(b)).join("");
+
+function parseScramble(s){
+  const tokens=s.trim().split(/\s+/).filter(Boolean);
+  const moves=[];
+  for(const t of tokens){
+    const m=t.match(/^([UDLRFB])(2|'|2'|'2)?$/i);
+    if(!m)return{error:t};
+    const suf=m[2]||"";
+    moves.push({face:m[1].toUpperCase(),times:suf.includes("2")?2:suf.includes("'")?3:1});
+  }
+  return{moves};
+}
+function applyScramble(moves){
+  let state=facelets.map(f=>f.face);
+  for(const mv of moves)for(let k=0;k<mv.times;k++){
+    const perm=MOVE_PERM[mv.face],ns=state.slice();
+    for(let i=0;i<54;i++)ns[perm[i]]=state[i];
+    state=ns;
+  }
+  return state;
+}
+function randomScramble(n=20){
+  const sufs=["","'","2"],out=[];
+  const AX={U:0,D:0,L:1,R:1,F:2,B:2};
+  let last="",last2="";
+  for(let i=0;i<n;i++){
+    let f;
+    do{f=FACE_ORDER[Math.floor(Math.random()*6)];}
+    while(f===last||(AX[f]===AX[last]&&AX[f]===AX[last2]));
+    last2=last;last=f;
+    out.push(f+sufs[Math.floor(Math.random()*3)]);
+  }
+  return out.join(" ");
+}
+
+/* Old Pochmann style tracing with alphabetical break-ins */
+function trace(state,type,bufferLetter){
+  const l2f=type==="corner"?cornerL2F:edgeL2F;
+  const bufF=l2f[bufferLetter];
+  const bufPiece=pieceOf[type][bufF];
+  const isSolved=p=>p.facelets.every(f=>state[f]===facelets[f].face);
+  const colorKey=p=>p.facelets.map(f=>state[f]).slice().sort().join("");
+  const targetOf=ref=>{
+    const p=pieceOf[type][ref];
+    const tp=solvedByKey[type].get(colorKey(p));
+    const tf=tp.facelets.find(f=>facelets[f].face===state[ref]);
+    return{tp,tf};
+  };
+  const visited=new Set([bufPiece.key]);
+  const cycles=[];
+  let cyc=[],ref=bufF;
+  for(;;){
+    const{tp,tf}=targetOf(ref);
+    if(tp.key===bufPiece.key)break;
+    cyc.push(letterInfo[tf].letter);visited.add(tp.key);ref=tf;
+  }
+  if(cyc.length)cycles.push({letters:cyc,isBreak:false});
+  const bufferTwisted=solvedByKey[type].get(colorKey(bufPiece))===bufPiece&&!isSolved(bufPiece);
+  const all=type==="corner"?corners:edges;
+  const misoriented=all.filter(p=>p!==bufPiece&&solvedByKey[type].get(colorKey(p))===p&&!isSolved(p)).map(pieceName);
+  for(let li=0;li<24;li++){
+    const L=String.fromCharCode(65+li);
+    const p=pieceOf[type][l2f[L]];
+    if(visited.has(p.key)||isSolved(p))continue;
+    const c2=[L];visited.add(p.key);let r2=l2f[L];
+    for(;;){
+      const{tp,tf}=targetOf(r2);
+      c2.push(letterInfo[tf].letter);
+      if(tp.key===p.key)break;
+      visited.add(tp.key);r2=tf;
+    }
+    cycles.push({letters:c2,isBreak:true});
+  }
+  return{
+    cycles,
+    letters:cycles.flatMap(c=>c.letters),
+    bufferTwisted,misoriented,
+    solvedCount:all.filter(isSolved).length,
+    total:all.length,
+  };
+}
+
+/* ============ UI ============ */
+const EDGE_BUFFERS=[
+  {letter:"B",name:"UR",hint:"Old Pochmann"},
+  {letter:"C",name:"UF",hint:"3-style"},
+  {letter:"U",name:"DF",hint:"M2"},
+];
+const CORNER_BUFFERS=[
+  {letter:"A",name:"UBL",hint:"Old Pochmann"},
+  {letter:"C",name:"UFR",hint:"3-style"},
+];
+let edgeBuffer="B", cornerBuffer="A";
+
+const $=id=>document.getElementById(id);
+const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;};
+
+function tile(L,ghost){
+  const t=el("div","tile"+(ghost?" ghost":""),L);
+  if(!ghost){
+    const d=FACE_DEFS[faceOfLetter(L)];
+    t.style.background=d.color;
+    t.style.color=d.dark?"#1b1d22":"#fff";
+  }
+  return t;
+}
+
+function renderMemo(container,title,result,bufferName){
+  container.replaceChildren();
+  const head=el("div","memo-head");
+  head.append(el("b",null,title));
+  const n=result.letters.length;
+  head.append(el("small",null,
+    `buffer ${bufferName} · ${n} target${n===1?"":"s"} · ${result.solvedCount}/${result.total} already solved`));
+  container.append(head);
+  if(n===0){
+    container.append(el("div","hint","Nothing to memorize."));
+  }else{
+    const pairs=el("div","pairs");
+    for(let i=0;i<n;i+=2){
+      const pr=el("div","pair");
+      pr.append(tile(result.letters[i]));
+      if(i+1<n)pr.append(tile(result.letters[i+1]));
+      else pr.append(tile("·",true));
+      pairs.append(pr);
+    }
+    container.append(pairs);
+  }
+  if(result.cycles.length){
+    const c=el("div","cyc");
+    c.append("cycles: ");
+    result.cycles.forEach((cy,i)=>{
+      if(i>0){const s=el("span","sep"," \u2301 ");c.append(s);}
+      const sp=el("span",cy.isBreak?"brk":"",cy.letters.join(""));
+      c.append(sp);
+    });
+    if(result.cycles.some(cy=>cy.isBreak))c.append(el("span","sep","  (\u2301 = break into new cycle)"));
+    container.append(c);
+  }
+  if(result.bufferTwisted||result.misoriented.length){
+    const nt=el("div","note");
+    if(result.bufferTwisted)nt.append(el("div",null,"\u26A0 Buffer piece is misoriented in place — fix with a flip/twist at the end."));
+    if(result.misoriented.length)nt.append(el("div",null,"\u21BB In place but misoriented (handled above via 2-target break-ins): "+result.misoriented.join(", ")));
+    container.append(nt);
+  }
+}
+
+function renderNet(state){
+  const net=$("net");
+  net.replaceChildren();
+  const cell=30,gap=2,pad=6;
+  const offsets={U:[0,3],L:[3,0],F:[3,3],R:[3,6],B:[3,9],D:[6,3]};
+  net.style.width=(12*(cell+gap)+pad*2)+"px";
+  net.style.height=(9*(cell+gap)+pad*2)+"px";
+  const bufSet=new Set([edgeL2F[edgeBuffer],cornerL2F[cornerBuffer]]);
+  facelets.forEach((fl,i)=>{
+    const[ro,co]=offsets[fl.face];
+    const s=el("div","stk"+(bufSet.has(i)?" buf":""),letterInfo[i]?letterInfo[i].letter:"");
+    s.style.left=(pad+(co+fl.c)*(cell+gap))+"px";
+    s.style.top=(pad+(ro+fl.r)*(cell+gap))+"px";
+    s.style.width=cell+"px";s.style.height=cell+"px";
+    s.style.background=FACE_DEFS[state[i]].color;
+    net.append(s);
+  });
+}
+
+function renderSeg(container,options,current,onPick){
+  container.replaceChildren();
+  for(const o of options){
+    const b=el("button",current===o.letter?"on":"");
+    b.title=o.hint;
+    b.append(document.createTextNode(o.name+" "));
+    b.append(el("span",null,o.letter));
+    b.onclick=()=>onPick(o.letter);
+    container.append(b);
+  }
+}
+
+function update(){
+  renderSeg($("ebuf"),EDGE_BUFFERS,edgeBuffer,L=>{edgeBuffer=L;update();});
+  renderSeg($("cbuf"),CORNER_BUFFERS,cornerBuffer,L=>{cornerBuffer=L;update();});
+  const msg=$("msg");msg.replaceChildren();
+  const text=$("scramble").value;
+  if(!text.trim()){
+    $("results").hidden=true;
+    msg.append(el("div","hint","Enter a scramble or generate a random one."));
+    return;
+  }
+  const parsed=parseScramble(text);
+  if(parsed.error){
+    $("results").hidden=true;
+    msg.append(el("div","err",`Can't read \u201C${parsed.error}\u201D — use face turns only: U D L R F B, with ' or 2 (e.g. R U' F2).`));
+    return;
+  }
+  const state=applyScramble(parsed.moves);
+  const e=trace(state,"edge",edgeBuffer);
+  const c=trace(state,"corner",cornerBuffer);
+  $("results").hidden=false;
+  $("parity").hidden=e.letters.length%2===0;
+  renderMemo($("edges"),"Edges",e,EDGE_BUFFERS.find(b=>b.letter===edgeBuffer).name);
+  renderMemo($("corners"),"Corners",c,CORNER_BUFFERS.find(b=>b.letter===cornerBuffer).name);
+  renderNet(state);
+}
+
+$("scramble").addEventListener("input",update);
+$("rand").onclick=()=>{$("scramble").value=randomScramble();update();};
+$("clear").onclick=()=>{$("scramble").value="";update();$("scramble").focus();};
+$("scramble").value="B2 L' D2 F2 R U2 L D2 R2 U2 F2 U' B L' F D2 R2 F' D R'";
+update();
+</script>
+</body>
+</html>
